@@ -181,9 +181,37 @@
   /* ── Report section ── */
   .company-header {
     display: flex;
-    align-items: baseline;
+    align-items: center;
     gap: 12px;
     margin-bottom: 6px;
+  }
+  .company-header-left {
+    display: flex;
+    align-items: baseline;
+    gap: 12px;
+    flex: 1;
+  }
+  .company-quote {
+    margin-left: auto;
+    text-align: right;
+    line-height: 1.3;
+    flex-shrink: 0;
+  }
+  .quote-price {
+    font-size: 20px;
+    font-weight: 700;
+    letter-spacing: -0.5px;
+  }
+  .quote-change {
+    font-size: 12px;
+    font-weight: 600;
+    margin-top: 1px;
+  }
+  .quote-market-state {
+    font-size: 10px;
+    color: var(--muted);
+    font-weight: 400;
+    margin-left: 4px;
   }
   .company-name {
     font-size: 22px;
@@ -521,6 +549,79 @@
     display: block;
   }
 
+  /* ── Price drivers section ── */
+  .pd-move-card {
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    padding: 10px 14px;
+    margin-bottom: 10px;
+    background: #fff;
+  }
+  .pd-move-up { border-left: 3px solid #2e7d32; }
+  .pd-move-dn { border-left: 3px solid #c62828; }
+  .pd-move-header {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    flex-wrap: wrap;
+    margin-bottom: 6px;
+  }
+  .pd-move-date  { font-size: 12px; color: var(--muted); font-variant-numeric: tabular-nums; white-space: nowrap; }
+  .pd-move-pct   { font-size: 13px; font-weight: 700; white-space: nowrap; }
+  .pd-move-price { font-size: 13px; font-variant-numeric: tabular-nums; }
+  .pd-move-prev  { font-size: 11px; color: var(--muted); }
+  .pd-primary-ctx { font-size: 13px; margin-bottom: 6px; line-height: 1.5; }
+  .pd-earnings-badge {
+    display: inline-block;
+    background: #e8eaf6;
+    color: #3949ab;
+    font-size: 10px;
+    font-weight: 700;
+    padding: 1px 6px;
+    border-radius: 3px;
+    margin-right: 5px;
+    white-space: nowrap;
+    vertical-align: middle;
+  }
+  .pd-headline { color: var(--text); }
+  a.pd-headline:hover { color: var(--accent); text-decoration: underline; }
+  .pd-no-ctx { font-size: 11px; color: var(--muted); }
+  .pd-web-results {
+    border-top: 1px solid var(--border);
+    margin-top: 7px;
+    padding-top: 7px;
+    display: flex;
+    flex-direction: column;
+    gap: 7px;
+  }
+  .pd-web-item { font-size: 12px; line-height: 1.5; }
+  .pd-web-title a { color: var(--accent); text-decoration: none; font-weight: 500; }
+  .pd-web-title a:hover { text-decoration: underline; }
+  .pd-web-domain {
+    font-size: 10px;
+    color: var(--muted);
+    margin-left: 6px;
+    font-weight: 400;
+  }
+  .pd-web-snippet { color: var(--muted); font-size: 11.5px; margin-top: 2px; }
+  .pd-source-badge {
+    display: inline-block;
+    background: #d4edda;
+    color: #2e7d32;
+    font-size: 10px;
+    font-weight: 700;
+    padding: 1px 6px;
+    border-radius: 3px;
+    white-space: nowrap;
+    vertical-align: middle;
+  }
+  .pd-source-none {
+    background: #fff3cd;
+    color: #856404;
+    white-space: normal;
+    font-weight: 400;
+  }
+
   /* ── Footer ── */
   footer {
     margin-top: 40px;
@@ -780,8 +881,13 @@ function renderReport(company, quarters) {
   // Build header HTML
   let html = `
     <div class="company-header">
-      <div class="company-name">${escHtml(company.name)}</div>
-      <div class="company-ticker">${escHtml(company.ticker)}</div>
+      <div class="company-header-left">
+        <div class="company-name">${escHtml(company.name)}</div>
+        <div class="company-ticker">${escHtml(company.ticker)}</div>
+      </div>
+      <div class="company-quote" id="company-quote-widget">
+        <div class="quote-price" style="color:var(--muted);font-size:13px">Loading…</div>
+      </div>
     </div>
     <div class="report-meta">
       ${quarters.length}-Quarter Financial Performance &nbsp;|&nbsp; ${periodRange}
@@ -809,8 +915,13 @@ function renderReport(company, quarters) {
     <button class="chart-tab" onclick="switchChart('operatingMarginPct',this)">Op. Margin %</button>
     <button class="chart-tab" onclick="switchChart('eps',this)">EPS</button>
     <button class="chart-tab" onclick="switchChart('operatingCashFlow',this)">Op. Cash Flow</button>
+    <button class="chart-tab" id="stock-price-tab" onclick="switchChart('stockPrice',this)">Stock Price</button>
   </div>`;
   html += buildAllCharts(quarters);
+  html += `<div id="chart-stockPrice" class="chart-wrap" style="display:none">
+    <div class="chart-title">Stock Price (Daily Close)</div>
+    <div id="stock-price-chart-inner" style="color:var(--muted);font-size:12px;padding:12px 0">Loading stock price data…</div>
+  </div>`;
 
   // Cash flow table
   html += `<div class="section-title">3 · Cash Flow & Profitability</div>`;
@@ -826,6 +937,15 @@ function renderReport(company, quarters) {
     <div class="insights-loading" id="insights-loading">
       <span class="insights-spinner"></span>
       Loading press releases and news articles from SEC EDGAR &amp; Yahoo Finance…
+    </div>
+  </div>`;
+
+  // Price drivers placeholder — filled in asynchronously after main render
+  html += `<div class="section-title" id="pricedrivers-section-title" style="display:none">6 · Significant Price Moves & Drivers</div>`;
+  html += `<div id="pricedrivers-panel">
+    <div class="insights-loading" id="pricedrivers-loading">
+      <span class="insights-spinner"></span>
+      Analysing significant price moves…
     </div>
   </div>`;
 
@@ -845,8 +965,156 @@ function renderReport(company, quarters) {
   // Show revenue chart by default
   showChart('revenue');
 
+  // Async: load current quote into header (fires first for fast display)
+  loadCurrentQuote(company);
+
+  // Async: load stock price chart (fires independently from insights)
+  loadStockPrice(company, quarters.length);
+
   // Async: load insights after the main report renders
   loadInsights(company, quarters);
+
+  // Async: load price drivers after the main report renders
+  loadPriceDrivers(company, quarters);
+}
+
+// ============================================================
+// Current quote — async fetch + inject into header
+// ============================================================
+async function loadCurrentQuote(company) {
+  const widget = document.getElementById('company-quote-widget');
+  if (!widget || !company.ticker) return;
+
+  try {
+    const r = await fetch(`/api/quote?ticker=${encodeURIComponent(company.ticker)}`);
+    if (!r.ok) throw new Error('HTTP ' + r.status);
+    const q = await r.json();
+    if (q.error) throw new Error(q.error);
+
+    const up      = q.change >= 0;
+    const sign    = up ? '+' : '';
+    const color   = up ? 'var(--pos)' : 'var(--neg)';
+    const arrow   = up ? '▲' : '▼';
+    const stateLabel = q.marketState === 'PRE'  ? ' Pre-market'
+                     : q.marketState === 'POST' ? ' After-hours'
+                     : q.marketState === 'CLOSED' ? ' Closed'
+                     : '';
+
+    widget.innerHTML = `
+      <div class="quote-price" style="color:${color}">$${q.price.toFixed(2)}</div>
+      <div class="quote-change" style="color:${color}">
+        ${arrow} ${sign}${q.change !== null ? q.change.toFixed(2) : '—'}
+        &nbsp;(${sign}${q.changePct !== null ? q.changePct.toFixed(2) : '—'}%)
+        ${stateLabel ? `<span class="quote-market-state">${escHtml(stateLabel)}</span>` : ''}
+      </div>`;
+  } catch {
+    widget.innerHTML = '';   // silently hide if quote unavailable
+  }
+}
+
+// ============================================================
+// Stock price chart — async fetch + render
+// ============================================================
+async function loadStockPrice(company, numQ) {
+  const inner = document.getElementById('stock-price-chart-inner');
+  if (!inner || !company.ticker) return;
+
+  try {
+    const r = await fetch(`/api/stockprice?ticker=${encodeURIComponent(company.ticker)}&n=${numQ}`);
+    if (!r.ok) throw new Error('HTTP ' + r.status);
+    const data = await r.json();
+    if (!data.prices || !data.prices.length) {
+      inner.innerHTML = '<div style="color:var(--muted);font-size:12px;padding:12px 0">No stock price data available for this ticker.</div>';
+      return;
+    }
+    inner.innerHTML = buildStockPriceSvg(data.prices, company.ticker);
+  } catch (e) {
+    inner.innerHTML = `<div style="color:var(--muted);font-size:12px;padding:12px 0">Could not load stock price: ${escHtml(e.message)}</div>`;
+  }
+}
+
+function buildStockPriceSvg(prices, ticker) {
+  // Thin data to at most 200 points for clean rendering
+  const maxPts = 200;
+  let pts = prices;
+  if (pts.length > maxPts) {
+    const step = pts.length / maxPts;
+    pts = Array.from({ length: maxPts }, (_, i) => pts[Math.round(i * step)]);
+  }
+
+  const closes = pts.map(p => p.close);
+  const minVal = Math.min(...closes);
+  const maxVal = Math.max(...closes);
+  const range  = maxVal - minVal || 1;
+
+  const W = 760, H = 180, PAD_L = 52, PAD_R = 12, PAD_T = 28, PAD_B = 32;
+  const chartW = W - PAD_L - PAD_R;
+  const chartH = H - PAD_T - PAD_B;
+  const n = pts.length;
+
+  // Y scale with headroom
+  const yMin  = minVal - range * 0.06;
+  const yMax  = maxVal + range * 0.06;
+  const yRng  = yMax - yMin;
+
+  function xCoord(i) { return PAD_L + (i / (n - 1)) * chartW; }
+  function yCoord(v) { return PAD_T + chartH - ((v - yMin) / yRng) * chartH; }
+
+  // Y-axis: 4 labels
+  const yLabels = [];
+  for (let i = 0; i <= 3; i++) {
+    const v = yMin + (yRng / 3) * i;
+    const y = yCoord(v);
+    yLabels.push({ v, y });
+  }
+
+  let svg = '';
+
+  // Grid lines
+  for (const lbl of yLabels) {
+    svg += `<line x1="${PAD_L}" y1="${lbl.y.toFixed(1)}" x2="${W - PAD_R}" y2="${lbl.y.toFixed(1)}" stroke="#e5e7eb" stroke-width="1"/>`;
+    svg += `<text x="${(PAD_L - 4).toFixed(1)}" y="${(lbl.y + 4).toFixed(1)}" text-anchor="end" font-size="9" fill="#57606a">$${lbl.v.toFixed(0)}</text>`;
+  }
+
+  // Area fill (gradient via polygon)
+  const polyPoints = pts.map((p, i) => `${xCoord(i).toFixed(1)},${yCoord(p.close).toFixed(1)}`).join(' ');
+  const baseY = (PAD_T + chartH).toFixed(1);
+  svg += `<polygon points="${xCoord(0).toFixed(1)},${baseY} ${polyPoints} ${xCoord(n-1).toFixed(1)},${baseY}" fill="#3b82d4" opacity="0.08"/>`;
+
+  // Price line
+  svg += `<polyline points="${polyPoints}" fill="none" stroke="#3b82d4" stroke-width="1.8"/>`;
+
+  // Start / End price dots and labels
+  const startPt = pts[0];
+  const endPt   = pts[pts.length - 1];
+  const pctChg  = ((endPt.close - startPt.close) / startPt.close) * 100;
+  const pctStr  = (pctChg >= 0 ? '+' : '') + pctChg.toFixed(1) + '%';
+  const pctCol  = pctChg >= 0 ? '#2e7d32' : '#c62828';
+
+  svg += `<circle cx="${xCoord(0).toFixed(1)}" cy="${yCoord(startPt.close).toFixed(1)}" r="3.5" fill="#3b82d4"/>`;
+  svg += `<circle cx="${xCoord(n-1).toFixed(1)}" cy="${yCoord(endPt.close).toFixed(1)}" r="4" fill="${pctCol}"/>`;
+
+  // End label
+  const endX = xCoord(n - 1);
+  const endY = yCoord(endPt.close);
+  svg += `<text x="${(endX - 5).toFixed(1)}" y="${(endY - 8).toFixed(1)}" text-anchor="end" font-size="9.5" font-weight="700" fill="${pctCol}">$${endPt.close.toFixed(2)} (${pctStr})</text>`;
+
+  // X-axis: show ~6 evenly spaced date labels
+  const xLabelCount = 6;
+  for (let i = 0; i < xLabelCount; i++) {
+    const idx = Math.round((i / (xLabelCount - 1)) * (n - 1));
+    const x   = xCoord(idx);
+    const lbl = pts[idx].date.slice(0, 7); // YYYY-MM
+    svg += `<text x="${x.toFixed(1)}" y="${(H - 4)}" text-anchor="middle" font-size="9" fill="#57606a">${escHtml(lbl)}</text>`;
+  }
+
+  // Period change badge (top-right of chart)
+  svg += `<text x="${(W - PAD_R - 2).toFixed(1)}" y="${PAD_T - 8}" text-anchor="end" font-size="10" font-weight="600" fill="${pctCol}">${pctStr} period</text>`;
+
+  return `<svg class="chart" viewBox="0 0 ${W} ${H}" aria-label="Stock price chart for ${escHtml(ticker)}">${svg}</svg>
+    <div style="font-size:11px;color:var(--muted);margin-top:5px">
+      ${escHtml(startPt.date)} – ${escHtml(endPt.date)} &nbsp;·&nbsp; Daily closing price &nbsp;·&nbsp; Source: Yahoo Finance
+    </div>`;
 }
 
 // ============================================================
@@ -874,6 +1142,111 @@ async function loadInsights(company, quarters) {
     insightsPanel.innerHTML = `<div class="pr-empty">Could not load insights: ${escHtml(e.message)}. Check that the server is running.</div>`;
   }
 }
+
+
+// ============================================================
+// Price drivers — async fetch + inject
+// ============================================================
+async function loadPriceDrivers(company, quarters) {
+  const panel       = document.getElementById('pricedrivers-panel');
+  const sectionTitle = document.getElementById('pricedrivers-section-title');
+  if (!panel) return;
+
+  const ticker = company.ticker || '';
+  const cik    = company.cik    || '';
+  const n      = quarters.length || 8;
+
+  try {
+    const r = await fetch(
+      `/api/pricedrivers?ticker=${encodeURIComponent(ticker)}&cik=${encodeURIComponent(cik)}&n=${n}`
+    );
+    if (!r.ok) throw new Error('HTTP ' + r.status);
+    const data = await r.json();
+
+    if (sectionTitle) sectionTitle.style.display = '';
+    panel.innerHTML = buildPriceDriversHtml(data, company);
+  } catch (e) {
+    if (sectionTitle) sectionTitle.style.display = '';
+    panel.innerHTML = `<div class="pr-empty">Could not load price driver analysis: ${escHtml(e.message)}.</div>`;
+  }
+}
+
+function buildPriceDriversHtml(data, company) {
+  const { moves = [], ticker, searchSource } = data;
+
+  if (!moves.length) {
+    return `<div class="pr-empty">No significant single-day price moves (≥ 4%) detected in the selected period for ${escHtml(ticker)}.</div>`;
+  }
+
+  // Sort chronologically for display
+  const sorted = moves.slice().sort((a, b) => a.date < b.date ? -1 : 1);
+
+  // Search source badge
+  const sourceBadge = searchSource
+    ? `<span class="pd-source-badge">${escHtml(searchSource)}</span>`
+    : `<span class="pd-source-badge pd-source-none">No web search key configured — add SERPER_API_KEY to .env</span>`;
+
+  let html = `<div style="font-size:13px;color:var(--muted);margin-bottom:12px">
+    Showing the <strong>top ${moves.length}</strong> largest single-day price moves (by magnitude)
+    detected over the analysis window for <strong>${escHtml(company.name)} (${escHtml(ticker)})</strong>.
+    Yahoo Finance headlines (±2 days) and web-search context ${sourceBadge} are shown where available.
+    <em>Correlation only — not causation. Verify with official filings and press releases.</em>
+  </div>`;
+
+  for (const m of sorted) {
+    const isUp  = m.changePct >= 0;
+    const sign  = isUp ? '+' : '';
+    const cls   = isUp ? 'pos' : 'neg';
+    const arrow = isUp ? '▲' : '▼';
+    const moveTag = isUp
+      ? `<span class="tag tag-up">${arrow} UP</span>`
+      : `<span class="tag tag-dn">${arrow} DOWN</span>`;
+
+    // ── Primary context line (earnings badge + Yahoo headline) ──
+    let primaryCtx = '';
+    if (m.label) {
+      primaryCtx += `<span class="pd-earnings-badge">${escHtml(m.label)}</span> `;
+    }
+    if (m.headline) {
+      primaryCtx += m.headlineLink
+        ? `<a href="${escHtml(m.headlineLink)}" target="_blank" rel="noopener" class="pd-headline">${escHtml(m.headline)}</a>`
+        : `<span class="pd-headline">${escHtml(m.headline)}</span>`;
+    }
+
+    // ── Web search results ──
+    let webHtml = '';
+    if (m.webResults && m.webResults.length) {
+      webHtml += `<div class="pd-web-results">`;
+      for (const w of m.webResults) {
+        const domain = (() => { try { return new URL(w.url).hostname.replace(/^www\./, ''); } catch { return ''; } })();
+        webHtml += `<div class="pd-web-item">
+          <div class="pd-web-title">
+            ${w.url
+              ? `<a href="${escHtml(w.url)}" target="_blank" rel="noopener">${escHtml(w.title)}</a>`
+              : escHtml(w.title)}
+            ${domain ? `<span class="pd-web-domain">${escHtml(domain)}</span>` : ''}
+          </div>
+          ${w.snippet ? `<div class="pd-web-snippet">${escHtml(w.snippet)}</div>` : ''}
+        </div>`;
+      }
+      webHtml += `</div>`;
+    }
+
+    html += `<div class="pd-move-card ${isUp ? 'pd-move-up' : 'pd-move-dn'}">
+      <div class="pd-move-header">
+        <span class="pd-move-date">${escHtml(m.date)}</span>
+        <span class="pd-move-pct ${cls}">${moveTag} ${sign}${m.changePct.toFixed(2)}%</span>
+        <span class="pd-move-price">$${m.close.toFixed(2)} <span class="pd-move-prev">(prev $${m.prevClose.toFixed(2)})</span></span>
+      </div>
+      ${primaryCtx ? `<div class="pd-primary-ctx">${primaryCtx}</div>` : ''}
+      ${webHtml}
+      ${!primaryCtx && !webHtml ? `<div class="pd-no-ctx">No context found for this date</div>` : ''}
+    </div>`;
+  }
+
+  return html;
+}
+
 
 function buildInsightsHtml(quarters, data, ticker) {
   const { pressReleases = {}, news = [] } = data;
@@ -1170,6 +1543,8 @@ function switchChart(field, btn) {
     const el = document.getElementById('chart-' + f);
     if (el) el.style.display = 'none';
   }
+  const stockEl = document.getElementById('chart-stockPrice');
+  if (stockEl) stockEl.style.display = 'none';
   document.querySelectorAll('.chart-tab').forEach(b => b.classList.remove('active'));
   showChart(field);
   btn.classList.add('active');

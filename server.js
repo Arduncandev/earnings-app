@@ -5,18 +5,43 @@
  * Endpoints:
  *   GET /api/search?q=<query>              → company search (name or ticker)
  *   GET /api/financials?cik=<cik>&n=<n>   → XBRL quarterly financials
+ *   GET /api/stockprice?ticker=<t>&n=<n>  → historical daily close prices
+ *   GET /api/pricedrivers?ticker=&cik=&n= → significant price moves + web context
  *
  * Run: node server.js   (default port 3737)
  * Uses only Node.js built-ins — no npm packages required.
+ *
+ * Optional env vars for web-search grounding:
+ *   BRAVE_API_KEY   — Brave Search API key  (https://brave.com/search/api/)
+ *   GOOGLE_API_KEY  — Google Custom Search API key
+ *   GOOGLE_CX       — Google Programmable Search Engine ID
  */
 
 const http  = require('http');
 const https = require('https');
-const url   = require('url');
 const fs    = require('fs');
 const path  = require('path');
 
+// ── Auto-load .env from the same directory as server.js ─────
+const ENV_PATH = path.join(__dirname, '.env');
+if (fs.existsSync(ENV_PATH)) {
+  console.log(`  [.env] Loading from: ${ENV_PATH}`);
+  for (const line of fs.readFileSync(ENV_PATH, 'utf8').split('\n')) {
+    const m = line.match(/^\s*([^#][^=]*?)\s*=\s*(.*)\s*$/);
+    if (m && !process.env[m[1]]) {
+      process.env[m[1]] = m[2];
+      console.log(`  [.env] Set: ${m[1]}`);
+    }
+  }
+} else {
+  console.log(`  [.env] Not found at: ${ENV_PATH}`);
+}
+
 const PORT = process.env.PORT || 3737;
+
+// ── Web search API key (optional) ───────────────────────────
+const SERPER_API_KEY = process.env.SERPER_API_KEY || '';
+console.log(`  [search] SERPER_API_KEY: ${SERPER_API_KEY ? 'SET ✓' : 'NOT SET'}`);
 
 // ---------- HTTPS helper ----------
 
@@ -492,6 +517,224 @@ async function fetchYahooFinanceNews(ticker, maxItems = 15) {
 }
 
 /**
+ * Fetch current quote for a ticker: latest price, previous close, change, change%.
+ * Uses Yahoo Finance v8 chart API with a 1-day/1-minute interval so we get
+ * the most recent trade price and the previousClose metadata.
+ */
+async function fetchCurrentQuote(ticker) {
+  try {
+    const p = `/v8/finance/chart/${encodeURIComponent(ticker)}?interval=1m&range=1d&includePrePost=false`;
+    const r = await httpsGet('query1.finance.yahoo.com', p);
+    if (r.status !== 200) return null;
+
+    const json   = JSON.parse(r.body);
+    const result = json?.chart?.result?.[0];
+    if (!result) return null;
+
+    const meta    = result.meta || {};
+    const current = meta.regularMarketPrice ?? meta.chartPreviousClose ?? null;
+    const prev    = meta.previousClose      ?? meta.chartPreviousClose ?? null;
+    if (current === null) return null;
+
+    const change    = prev !== null ? parseFloat((current - prev).toFixed(2)) : null;
+    const changePct = prev !== null ? parseFloat(((current - prev) / prev * 100).toFixed(2)) : null;
+
+    return {
+      price:     parseFloat(current.toFixed(2)),
+      prevClose: prev !== null ? parseFloat(prev.toFixed(2)) : null,
+      change,
+      changePct,
+      currency:  meta.currency || 'USD',
+      marketState: meta.marketState || '',
+    };
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Fetch historical daily close prices for a ticker from Yahoo Finance v8 chart API.
+ * Returns an array of { date: 'YYYY-MM-DD', close: number } sorted oldest→newest.
+ * numQuarters controls how far back to fetch (each quarter ≈ 91 days).
+ */
+async function fetchStockPrice(ticker, numQuarters = 8) {
+  try {
+    const range  = numQuarters <= 4  ? '1y'
+                 : numQuarters <= 8  ? '2y'
+                 : numQuarters <= 12 ? '3y'
+                 : '5y';
+    const path = `/v8/finance/chart/${encodeURIComponent(ticker)}?interval=1d&range=${range}&events=div`;
+    const r = await httpsGet('query1.finance.yahoo.com', path);
+    if (r.status !== 200) return [];
+
+    const json = JSON.parse(r.body);
+    const result = json?.chart?.result?.[0];
+    if (!result) return [];
+
+    const timestamps = result.timestamp || [];
+    const closes     = result.indicators?.quote?.[0]?.close || [];
+
+    const prices = [];
+    for (let i = 0; i < timestamps.length; i++) {
+      const c = closes[i];
+      if (c === null || c === undefined || isNaN(c)) continue;
+      const d = new Date(timestamps[i] * 1000);
+      const dateStr = d.toISOString().slice(0, 10);
+      prices.push({ date: dateStr, close: parseFloat(c.toFixed(2)) });
+    }
+    return prices;
+  } catch {
+    return [];
+  }
+}
+
+/**
+ * Search the web for context about a specific price move using Serper.dev.
+ * Returns an array of { title, url, snippet, source } (up to 3 results).
+ */
+async function searchWebForContext(query) {
+  if (!SERPER_API_KEY) return [];
+  try {
+    const body = JSON.stringify({ q: query, num: 3 });
+    const result = await new Promise((resolve, reject) => {
+      const opts = {
+        hostname: 'google.serper.dev',
+        path:     '/search',
+        method:   'POST',
+        headers:  {
+          'X-API-KEY':     SERPER_API_KEY,
+          'Content-Type':  'application/json',
+          'Content-Length': Buffer.byteLength(body),
+        },
+      };
+      const req = https.request(opts, res => {
+        let data = '';
+        res.on('data', d => { data += d; });
+        res.on('end', () => resolve({ status: res.statusCode, body: data }));
+      });
+      req.on('error', reject);
+      req.setTimeout(8000, () => { req.destroy(new Error('timeout')); });
+      req.write(body);
+      req.end();
+    });
+    if (result.status === 200) {
+      const json = JSON.parse(result.body);
+      const items = json?.organic || [];
+      console.log(`  [search] Serper HTTP 200 — items: ${items.length}`);
+      return items.slice(0, 3).map(it => ({
+        title:   it.title   || '',
+        url:     it.link    || '',
+        snippet: it.snippet || '',
+        source:  'Serper (Google)',
+      }));
+    } else {
+      console.warn(`  [search] Serper HTTP ${result.status}: ${result.body.slice(0, 200)}`);
+    }
+  } catch (e) {
+    console.warn('Serper search error:', e.message);
+  }
+  return [];
+}
+
+/**
+ * Price drivers: detect significant single-day price moves (≥ threshold%) and
+ * annotate each event with the nearest news headline, earnings quarter, and
+ * Google web-search context.
+ * Returns { ticker, searchSource, moves: [{ date, close, prevClose, changePct, label, headline, headlineLink, webResults }] }
+ */
+async function buildPriceDrivers(ticker, prices, news, quarters, threshold = 4) {
+  if (!prices || prices.length < 2) return { ticker, moves: [], searchSource: null };
+
+  // Build a map of date → news headline for quick lookup
+  const newsMap = {};
+  for (const item of (news || [])) {
+    try {
+      const d = new Date(item.pubDate);
+      if (isNaN(d)) continue;
+      const key = d.toISOString().slice(0, 10);
+      if (!newsMap[key]) newsMap[key] = item;
+    } catch { /* skip */ }
+  }
+
+  // Build a map of quarter fiscalDateEnd → period label
+  const quarterMap = {};
+  for (const q of (quarters || [])) {
+    if (q.fiscalDateEnd) quarterMap[q.fiscalDateEnd] = q.period;
+  }
+
+  // Compute daily % changes and find significant moves
+  const moves = [];
+  for (let i = 1; i < prices.length; i++) {
+    const prev  = prices[i - 1].close;
+    const curr  = prices[i].close;
+    if (!prev || !curr) continue;
+    const changePct = parseFloat(((curr - prev) / prev * 100).toFixed(2));
+    if (Math.abs(changePct) < threshold) continue;
+
+    const date = prices[i].date;
+
+    // Look for a Yahoo Finance news headline within ±2 days of this move
+    let headline = null, headlineLink = null;
+    for (let offset = 0; offset <= 2; offset++) {
+      for (const delta of (offset === 0 ? [0] : [-offset, offset])) {
+        const lookup = new Date(date);
+        lookup.setDate(lookup.getDate() + delta);
+        const key = lookup.toISOString().slice(0, 10);
+        if (newsMap[key]) {
+          headline     = newsMap[key].title;
+          headlineLink = newsMap[key].link || null;
+          break;
+        }
+      }
+      if (headline) break;
+    }
+
+    // Check if this date is near an earnings fiscal end date (within 5 days)
+    let earningsLabel = null;
+    for (const [fiscalEnd, period] of Object.entries(quarterMap)) {
+      const d1 = new Date(date), d2 = new Date(fiscalEnd);
+      if (isNaN(d2)) continue;
+      if (Math.abs(d1 - d2) <= 5 * 24 * 60 * 60 * 1000) {
+        earningsLabel = `${period} earnings`;
+        break;
+      }
+    }
+
+    moves.push({
+      date,
+      close:       curr,
+      prevClose:   prev,
+      changePct,
+      label:       earningsLabel || null,
+      headline:    headline || null,
+      headlineLink,
+      webResults:  [],   // filled in below
+    });
+  }
+
+  // Sort by absolute magnitude descending, keep top 10
+  moves.sort((a, b) => Math.abs(b.changePct) - Math.abs(a.changePct));
+  const top = moves.slice(0, 10);
+
+  // ── Web-search grounding (Serper) ────────────────────────
+  // Only fire if key is configured; serialise to respect rate limits
+  let searchSource = null;
+  if (SERPER_API_KEY) {
+    for (const move of top) {
+      const direction = move.changePct >= 0 ? 'surge' : 'drop';
+      const query = `${ticker} stock ${direction} ${move.date} why reason`;
+      try {
+        const results = await searchWebForContext(query);
+        move.webResults = results;
+        if (results.length && !searchSource) searchSource = results[0].source;
+      } catch { /* non-fatal */ }
+    }
+  }
+
+  return { ticker, searchSource, moves: top };
+}
+
+/**
  * Main insights orchestrator.
  * Returns { pressReleases: { [period]: { quotes, highlights, guidance, filingDate } }, news: [...] }
  */
@@ -538,7 +781,7 @@ async function buildInsights(cik, ticker, quarters) {
 const PUBLIC_DIR = path.join(__dirname, 'public');
 
 const server = http.createServer(async (req, res) => {
-  const parsed   = url.parse(req.url, true);
+  const parsed   = new URL(req.url, 'http://localhost');
   const pathname = parsed.pathname;
 
   // CORS preflight
@@ -553,7 +796,7 @@ const server = http.createServer(async (req, res) => {
 
   // ── API: company search ──────────────────────────────────────
   if (pathname === '/api/search') {
-    const q = (parsed.query.q || '').trim();
+    const q = (parsed.searchParams.get('q') || '').trim();
     if (q.length < 1) { send(res, 400, { error: 'Missing q param' }); return; }
     try {
       const results = await edgarSearch(q);
@@ -567,8 +810,8 @@ const server = http.createServer(async (req, res) => {
 
   // ── API: financials ──────────────────────────────────────────
   if (pathname === '/api/financials') {
-    const cik = (parsed.query.cik || '').trim().replace(/^0+/, '');
-    const n   = Math.min(12, Math.max(4, parseInt(parsed.query.n || '8', 10)));
+    const cik = (parsed.searchParams.get('cik') || '').trim().replace(/^0+/, '');
+    const n   = Math.min(12, Math.max(4, parseInt(parsed.searchParams.get('n') || '8', 10)));
     if (!cik) { send(res, 400, { error: 'Missing cik param' }); return; }
     try {
       const facts   = await fetchCompanyFacts(cik);
@@ -589,13 +832,43 @@ const server = http.createServer(async (req, res) => {
     return;
   }
 
+  // ── API: current quote ───────────────────────────────────────
+  if (pathname === '/api/quote') {
+    const ticker = (parsed.searchParams.get('ticker') || '').trim().toUpperCase();
+    if (!ticker) { send(res, 400, { error: 'Missing ticker param' }); return; }
+    try {
+      const quote = await fetchCurrentQuote(ticker);
+      if (!quote) { send(res, 404, { error: 'No quote data found' }); return; }
+      send(res, 200, quote);
+    } catch (e) {
+      console.error('Quote error:', e.message);
+      send(res, 500, { error: e.message });
+    }
+    return;
+  }
+
+  // ── API: stock price history ─────────────────────────────────
+  if (pathname === '/api/stockprice') {
+    const ticker = (parsed.searchParams.get('ticker') || '').trim().toUpperCase();
+    const n      = Math.min(12, Math.max(4, parseInt(parsed.searchParams.get('n') || '8', 10)));
+    if (!ticker) { send(res, 400, { error: 'Missing ticker param' }); return; }
+    try {
+      const prices = await fetchStockPrice(ticker, n);
+      send(res, 200, { ticker, prices });
+    } catch (e) {
+      console.error('Stock price error:', e.message);
+      send(res, 500, { error: e.message });
+    }
+    return;
+  }
+
   // ── API: insights (press releases + news) ────────────────────
   if (pathname === '/api/insights') {
-    const cik    = (parsed.query.cik    || '').trim().replace(/^0+/, '');
-    const ticker = (parsed.query.ticker || '').trim().toUpperCase();
+    const cik    = (parsed.searchParams.get('cik') || '').trim().replace(/^0+/, '');
+    const ticker = (parsed.searchParams.get('ticker') || '').trim().toUpperCase();
     // periods is a comma-separated list of quarter labels from the financials response
     // e.g. "Q1 2026,Q4 2025,Q3 2025"
-    const periodsRaw = (parsed.query.periods || '').trim();
+    const periodsRaw = (parsed.searchParams.get('periods') || '').trim();
     if (!cik) { send(res, 400, { error: 'Missing cik param' }); return; }
 
     // We need the quarters array to match 8-K dates to periods.
@@ -621,9 +894,31 @@ const server = http.createServer(async (req, res) => {
     return;
   }
 
+  // ── API: price drivers ───────────────────────────────────────
+  if (pathname === '/api/pricedrivers') {
+    const ticker = (parsed.searchParams.get('ticker') || '').trim().toUpperCase();
+    const cik    = (parsed.searchParams.get('cik')    || '').trim().replace(/^0+/, '');
+    const n      = Math.min(12, Math.max(4, parseInt(parsed.searchParams.get('n') || '8', 10)));
+    if (!ticker) { send(res, 400, { error: 'Missing ticker param' }); return; }
+    try {
+      const [prices, news, facts] = await Promise.all([
+        fetchStockPrice(ticker, n),
+        fetchYahooFinanceNews(ticker, 50),   // wider net for date matching
+        cik ? fetchCompanyFacts(cik) : null,
+      ]);
+      const quarters = facts ? buildQuarterlySummary(facts, n) : [];
+      const result   = await buildPriceDrivers(ticker, prices, news, quarters);
+      send(res, 200, result);
+    } catch (e) {
+      console.error('Price drivers error:', e.message);
+      send(res, 500, { error: e.message });
+    }
+    return;
+  }
+
   // ── API: resolve CIK info ────────────────────────────────────
   if (pathname === '/api/resolve') {
-    const cik = (parsed.query.cik || '').trim();
+    const cik = (parsed.searchParams.get('cik') || '').trim();
     if (!cik) { send(res, 400, { error: 'Missing cik' }); return; }
     try {
       const info = await resolveSubmission(cik);
