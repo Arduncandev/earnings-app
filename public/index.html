@@ -1,0 +1,1308 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Earnings Research — 8-Quarter Financial Analysis</title>
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  :root {
+    --bg: #ffffff;
+    --surface: #f7f8fa;
+    --border: #e5e7eb;
+    --text: #1f2328;
+    --muted: #57606a;
+    --accent: #3b82d4;
+    --accent2: #7c5cd8;
+    --pos: #2e7d32;
+    --neg: #c62828;
+    --warn: #856404;
+  }
+
+  body {
+    font-family: -apple-system, "Segoe UI", system-ui, sans-serif;
+    font-size: 14px;
+    line-height: 1.6;
+    color: var(--text);
+    background: var(--bg);
+    min-height: 100vh;
+  }
+
+  /* ── Header ── */
+  .header {
+    background: var(--text);
+    color: #fff;
+    padding: 18px 32px;
+    display: flex;
+    align-items: center;
+    gap: 14px;
+  }
+  .header-logo {
+    font-size: 22px;
+    font-weight: 800;
+    letter-spacing: -0.5px;
+    color: #fff;
+  }
+  .header-logo span { color: var(--accent); }
+  .header-sub {
+    font-size: 12px;
+    color: rgba(255,255,255,0.6);
+    margin-top: 1px;
+  }
+
+  /* ── Search panel ── */
+  .search-panel {
+    background: var(--surface);
+    border-bottom: 1px solid var(--border);
+    padding: 20px 32px;
+  }
+  .search-row {
+    display: flex;
+    gap: 10px;
+    align-items: flex-start;
+    max-width: 760px;
+  }
+  .search-wrap {
+    position: relative;
+    flex: 1;
+  }
+  #search-input {
+    width: 100%;
+    padding: 9px 12px;
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    font-size: 14px;
+    background: #fff;
+    color: var(--text);
+    outline: none;
+    transition: border-color 0.15s;
+  }
+  #search-input:focus { border-color: var(--accent); }
+
+  .dropdown {
+    position: absolute;
+    top: calc(100% + 4px);
+    left: 0;
+    right: 0;
+    background: #fff;
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+    max-height: 260px;
+    overflow-y: auto;
+    z-index: 100;
+    display: none;
+  }
+  .dropdown.open { display: block; }
+  .dropdown-item {
+    padding: 8px 12px;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    border-bottom: 1px solid var(--border);
+  }
+  .dropdown-item:last-child { border-bottom: none; }
+  .dropdown-item:hover { background: var(--surface); }
+  .di-ticker {
+    font-weight: 700;
+    font-size: 12px;
+    background: var(--accent);
+    color: #fff;
+    padding: 1px 6px;
+    border-radius: 3px;
+    min-width: 48px;
+    text-align: center;
+    flex-shrink: 0;
+  }
+  .di-name { font-size: 13px; flex: 1; }
+  .di-exch { font-size: 10px; color: var(--muted); margin-left: 6px; }
+
+  #search-btn {
+    padding: 9px 20px;
+    background: var(--accent);
+    color: #fff;
+    border: none;
+    border-radius: 4px;
+    font-size: 14px;
+    font-weight: 600;
+    cursor: pointer;
+    white-space: nowrap;
+    transition: background 0.15s;
+  }
+  #search-btn:hover { background: #2d6bbf; }
+  #search-btn:disabled { background: #aaa; cursor: not-allowed; }
+
+  .quarters-select {
+    padding: 9px 10px;
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    font-size: 13px;
+    background: #fff;
+    color: var(--text);
+    outline: none;
+  }
+
+  .search-hint {
+    font-size: 12px;
+    color: var(--muted);
+    margin-top: 7px;
+    max-width: 760px;
+  }
+
+  /* ── Content area ── */
+  .main {
+    max-width: 900px;
+    margin: 0 auto;
+    padding: 28px 24px;
+  }
+
+  /* ── Status / spinner ── */
+  .status-box {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 32px;
+    text-align: center;
+    color: var(--muted);
+  }
+  .spinner {
+    display: inline-block;
+    width: 28px; height: 28px;
+    border: 3px solid var(--border);
+    border-top-color: var(--accent);
+    border-radius: 50%;
+    animation: spin 0.8s linear infinite;
+    margin-bottom: 12px;
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
+
+  /* ── Report section ── */
+  .company-header {
+    display: flex;
+    align-items: baseline;
+    gap: 12px;
+    margin-bottom: 6px;
+  }
+  .company-name {
+    font-size: 22px;
+    font-weight: 700;
+  }
+  .company-ticker {
+    font-size: 14px;
+    font-weight: 700;
+    background: var(--accent);
+    color: #fff;
+    padding: 2px 8px;
+    border-radius: 3px;
+  }
+  .report-meta {
+    font-size: 12px;
+    color: var(--muted);
+    margin-bottom: 24px;
+  }
+
+  /* ── KPI grid ── */
+  .kpi-grid {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 10px;
+    margin-bottom: 28px;
+  }
+  @media (max-width: 600px) { .kpi-grid { grid-template-columns: repeat(2, 1fr); } }
+  .kpi {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 5px;
+    padding: 12px 14px;
+  }
+  .kpi-val {
+    font-size: 20px;
+    font-weight: 700;
+    letter-spacing: -0.5px;
+  }
+  .kpi-label {
+    font-size: 11px;
+    color: var(--muted);
+    margin-top: 2px;
+    text-transform: uppercase;
+    letter-spacing: 0.3px;
+  }
+  .kpi-change {
+    font-size: 12px;
+    font-weight: 600;
+    margin-top: 3px;
+  }
+
+  /* ── Section headings ── */
+  .section-title {
+    font-size: 15px;
+    font-weight: 600;
+    margin: 32px 0 12px;
+    padding-bottom: 7px;
+    border-bottom: 2px solid var(--border);
+  }
+
+  /* ── Data table ── */
+  .tbl-wrap { overflow-x: auto; margin-bottom: 8px; }
+  table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 12.5px;
+  }
+  thead th {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    padding: 6px 8px;
+    text-align: center;
+    font-weight: 600;
+    white-space: nowrap;
+  }
+  thead th.left { text-align: left; }
+  tbody td {
+    border: 1px solid var(--border);
+    padding: 5px 8px;
+    text-align: right;
+    white-space: nowrap;
+  }
+  tbody td.label {
+    text-align: left;
+    font-weight: 500;
+    background: var(--surface);
+    min-width: 145px;
+  }
+  tbody tr.hl td { font-weight: 700; background: #fffbea !important; }
+  tbody tr:nth-child(even) td:not(.label) { background: #fafafa; }
+  .pos { color: var(--pos); font-weight: 600; }
+  .neg { color: var(--neg); font-weight: 600; }
+
+  /* ── SVG charts ── */
+  .chart-wrap { margin-bottom: 28px; }
+  .chart-title {
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--muted);
+    margin-bottom: 6px;
+    text-transform: uppercase;
+    letter-spacing: 0.4px;
+  }
+  .chart-tabs {
+    display: flex;
+    gap: 6px;
+    margin-bottom: 10px;
+  }
+  .chart-tab {
+    padding: 5px 12px;
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    font-size: 12px;
+    cursor: pointer;
+    background: #fff;
+    color: var(--muted);
+    transition: all 0.15s;
+  }
+  .chart-tab.active {
+    background: var(--accent);
+    color: #fff;
+    border-color: var(--accent);
+  }
+
+  svg.chart {
+    width: 100%;
+    background: #fff;
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    display: block;
+  }
+
+  /* ── Commentary ── */
+  .commentary-section { margin-bottom: 24px; }
+  .commentary-heading {
+    font-size: 13px;
+    font-weight: 700;
+    color: var(--accent);
+    margin-bottom: 5px;
+  }
+  .commentary-box {
+    background: var(--surface);
+    border-left: 3px solid var(--accent);
+    padding: 11px 14px;
+    font-size: 13px;
+    line-height: 1.7;
+    border-radius: 0 4px 4px 0;
+  }
+  .commentary-box ul {
+    margin: 6px 0 0 18px;
+  }
+  .commentary-box li { margin-bottom: 3px; }
+
+  /* ── Tags ── */
+  .tag {
+    display: inline-block;
+    font-size: 11px;
+    font-weight: 700;
+    padding: 1px 7px;
+    border-radius: 3px;
+    margin-right: 6px;
+    vertical-align: middle;
+  }
+  .tag-up   { background: #d4edda; color: var(--pos); }
+  .tag-dn   { background: #fde8e8; color: var(--neg); }
+  .tag-neu  { background: #e8eaf6; color: #3949ab; }
+  .tag-warn { background: #fff3cd; color: var(--warn); }
+
+  /* ── Disclaimer ── */
+  .disclaimer {
+    font-size: 11px;
+    color: var(--muted);
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    padding: 10px 14px;
+    margin-top: 24px;
+    line-height: 1.6;
+  }
+
+  /* ── Quick launch chips ── */
+  .quick-chips {
+    display: flex;
+    gap: 8px;
+    flex-wrap: wrap;
+    margin-top: 10px;
+  }
+  .chip {
+    padding: 4px 10px;
+    border: 1px solid var(--border);
+    border-radius: 20px;
+    font-size: 12px;
+    cursor: pointer;
+    background: #fff;
+    color: var(--text);
+    transition: all 0.15s;
+  }
+  .chip:hover { background: var(--accent); color: #fff; border-color: var(--accent); }
+
+  /* ── Insights section ── */
+  .insights-loading {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    color: var(--muted);
+    font-size: 13px;
+    padding: 14px 0;
+  }
+  .insights-spinner {
+    display: inline-block;
+    width: 16px; height: 16px;
+    border: 2px solid var(--border);
+    border-top-color: var(--accent);
+    border-radius: 50%;
+    animation: spin 0.8s linear infinite;
+    flex-shrink: 0;
+  }
+
+  /* Period tabs for press releases */
+  .period-tabs {
+    display: flex;
+    gap: 4px;
+    flex-wrap: wrap;
+    margin-bottom: 14px;
+  }
+  .period-tab {
+    padding: 4px 10px;
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    font-size: 12px;
+    cursor: pointer;
+    background: #fff;
+    color: var(--muted);
+    transition: all 0.12s;
+  }
+  .period-tab.active {
+    background: var(--accent);
+    color: #fff;
+    border-color: var(--accent);
+  }
+  .period-tab.has-data { color: var(--text); }
+  .period-tab.no-data  { opacity: 0.45; cursor: default; }
+
+  /* Press release panel */
+  .pr-panel { display: none; }
+  .pr-panel.visible { display: block; }
+
+  .pr-meta {
+    font-size: 11px;
+    color: var(--muted);
+    margin-bottom: 10px;
+  }
+  .pr-block {
+    margin-bottom: 14px;
+  }
+  .pr-block-title {
+    font-size: 11px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    color: var(--muted);
+    margin-bottom: 6px;
+  }
+  .pr-quote {
+    background: var(--surface);
+    border-left: 3px solid var(--accent2);
+    padding: 10px 14px;
+    font-size: 13px;
+    line-height: 1.65;
+    margin-bottom: 6px;
+    border-radius: 0 4px 4px 0;
+    font-style: italic;
+  }
+  .pr-highlight {
+    background: var(--surface);
+    border-left: 3px solid var(--accent);
+    padding: 8px 12px;
+    font-size: 12.5px;
+    line-height: 1.6;
+    margin-bottom: 5px;
+    border-radius: 0 3px 3px 0;
+  }
+  .pr-guidance {
+    background: #fff8e8;
+    border-left: 3px solid #d97706;
+    padding: 8px 12px;
+    font-size: 12.5px;
+    line-height: 1.6;
+    margin-bottom: 5px;
+    border-radius: 0 3px 3px 0;
+  }
+  .pr-empty {
+    color: var(--muted);
+    font-size: 12px;
+    padding: 8px 0;
+  }
+
+  /* News feed */
+  .news-grid {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 10px;
+    margin-top: 4px;
+  }
+  @media (max-width: 600px) { .news-grid { grid-template-columns: 1fr; } }
+  .news-card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 5px;
+    padding: 10px 12px;
+  }
+  .news-card-title {
+    font-size: 13px;
+    font-weight: 600;
+    line-height: 1.4;
+    margin-bottom: 4px;
+    color: var(--text);
+  }
+  .news-card-title a { color: var(--text); text-decoration: none; }
+  .news-card-title a:hover { color: var(--accent); text-decoration: underline; }
+  .news-card-desc {
+    font-size: 12px;
+    color: var(--muted);
+    line-height: 1.5;
+    margin-bottom: 4px;
+  }
+  .news-card-date {
+    font-size: 11px;
+    color: var(--muted);
+  }
+  .pr-sec-link {
+    font-size: 11px;
+    color: var(--accent);
+    margin-top: 8px;
+    display: block;
+  }
+
+  /* ── Footer ── */
+  footer {
+    margin-top: 40px;
+    padding-top: 14px;
+    border-top: 1px solid var(--border);
+    text-align: center;
+    font-size: 11px;
+    color: var(--muted);
+  }
+</style>
+</head>
+<body>
+
+<div class="header">
+  <div>
+    <div class="header-logo">Earnings<span>IQ</span></div>
+    <div class="header-sub">8-Quarter Financial Analysis · Powered by SEC EDGAR</div>
+  </div>
+</div>
+
+<div class="search-panel">
+  <div class="search-row">
+    <div class="search-wrap">
+      <input id="search-input" type="text" placeholder="Search by company name or ticker (e.g. Apple, MSFT, Amazon…)" autocomplete="off" />
+      <div id="dropdown" class="dropdown"></div>
+    </div>
+    <select id="quarters-select" class="quarters-select" title="Number of quarters">
+      <option value="4">4 qtrs</option>
+      <option value="6">6 qtrs</option>
+      <option value="8" selected>8 qtrs</option>
+      <option value="10">10 qtrs</option>
+      <option value="12">12 qtrs</option>
+    </select>
+    <button id="search-btn" onclick="triggerSearch()">Analyse →</button>
+  </div>
+  <div class="search-hint">
+    Type at least 2 characters — a dropdown will appear if multiple companies match. Select one, then click <strong>Analyse</strong>.
+  </div>
+  <div class="quick-chips" id="quick-chips">
+    <span class="chip" onclick="quickLaunch('AAPL','320193','Apple Inc.')">Apple (AAPL)</span>
+    <span class="chip" onclick="quickLaunch('MSFT','789019','Microsoft')">Microsoft (MSFT)</span>
+    <span class="chip" onclick="quickLaunch('AMZN','1018724','Amazon')">Amazon (AMZN)</span>
+    <span class="chip" onclick="quickLaunch('GOOGL','1652044','Alphabet')">Alphabet (GOOGL)</span>
+    <span class="chip" onclick="quickLaunch('TSLA','1318605','Tesla')">Tesla (TSLA)</span>
+    <span class="chip" onclick="quickLaunch('NVDA','1045810','NVIDIA')">NVIDIA (NVDA)</span>
+    <span class="chip" onclick="quickLaunch('META','1326801','Meta Platforms')">Meta (META)</span>
+    <span class="chip" onclick="quickLaunch('JPM','19617','JPMorgan Chase')">JPMorgan (JPM)</span>
+    <span class="chip" onclick="quickLaunch('IBM','51143','IBM')">IBM (IBM)</span>
+  </div>
+</div>
+
+<div class="main" id="main">
+  <div class="status-box" id="status-box">
+    <div style="font-size:32px;margin-bottom:10px;">📊</div>
+    <div style="font-size:15px;font-weight:600;margin-bottom:6px;">Financial Performance Intelligence</div>
+    <div style="color:var(--muted);font-size:13px;">Search for any publicly traded US company above to view its 8-quarter earnings trend — revenue, margins, EPS, and cash flow with trend analysis.</div>
+  </div>
+  <div id="report" style="display:none;"></div>
+</div>
+
+<script>
+// ============================================================
+// State
+// ============================================================
+let selectedCompany = null;   // { cik, ticker, name }
+let searchTimer = null;
+
+// ============================================================
+// Utilities
+// ============================================================
+function fmt(val, decimals = 1) {
+  if (val === null || val === undefined) return '—';
+  const abs = Math.abs(val);
+  if (abs >= 1e12) return '$' + (val / 1e12).toFixed(decimals) + 'T';
+  if (abs >= 1e9)  return '$' + (val / 1e9).toFixed(decimals) + 'B';
+  if (abs >= 1e6)  return '$' + (val / 1e6).toFixed(decimals) + 'M';
+  return '$' + val.toLocaleString();
+}
+
+function fmtPct(val) {
+  if (val === null || val === undefined) return '—';
+  return val.toFixed(1) + '%';
+}
+
+function fmtEps(val) {
+  if (val === null || val === undefined) return '—';
+  return '$' + val.toFixed(2);
+}
+
+function pctClass(str) {
+  if (!str) return '';
+  return str.startsWith('+') ? 'pos' : str.startsWith('-') ? 'neg' : '';
+}
+
+function trend(quarters, field) {
+  const vals = quarters.map(q => q[field]).filter(v => v !== null && v !== undefined);
+  if (vals.length < 2) return 'insufficient data';
+  const first4 = vals.slice(0, Math.floor(vals.length / 2));
+  const last4  = vals.slice(Math.floor(vals.length / 2));
+  const avg = arr => arr.reduce((a, b) => a + b, 0) / arr.length;
+  const delta = avg(last4) - avg(first4);
+  const pct = (delta / Math.abs(avg(first4))) * 100;
+  if (pct >  5) return 'growing';
+  if (pct < -5) return 'declining';
+  return 'stable';
+}
+
+// ============================================================
+// Search
+// ============================================================
+const input = document.getElementById('search-input');
+const dropdown = document.getElementById('dropdown');
+
+input.addEventListener('input', () => {
+  clearTimeout(searchTimer);
+  const q = input.value.trim();
+  if (q.length < 2) { closeDropdown(); return; }
+  searchTimer = setTimeout(() => fetchSuggestions(q), 220);
+});
+
+input.addEventListener('keydown', e => {
+  if (e.key === 'Escape') closeDropdown();
+  if (e.key === 'Enter') triggerSearch();
+});
+
+document.addEventListener('click', e => {
+  if (!e.target.closest('.search-wrap')) closeDropdown();
+});
+
+async function fetchSuggestions(q) {
+  try {
+    const res = await fetch(`/api/search?q=${encodeURIComponent(q)}`);
+    const data = await res.json();
+    renderDropdown(data.results || []);
+  } catch {
+    closeDropdown();
+  }
+}
+
+function renderDropdown(results) {
+  if (!results.length) { closeDropdown(); return; }
+  dropdown.innerHTML = '';
+  for (const r of results) {
+    const ticker = (r.tickers && r.tickers.length) ? r.tickers[0] : (r.ticker || '');
+    const exch   = (r.exchanges && r.exchanges.length) ? r.exchanges[0] : '';
+    const div = document.createElement('div');
+    div.className = 'dropdown-item';
+    div.innerHTML = `<span class="di-ticker">${escHtml(ticker || r.cik)}</span><span class="di-name">${escHtml(r.name)}<span class="di-exch">${escHtml(exch)}</span></span>`;
+    div.addEventListener('click', () => selectCompany(r));
+    dropdown.appendChild(div);
+  }
+  dropdown.classList.add('open');
+}
+
+function selectCompany(r) {
+  const ticker = (r.tickers && r.tickers.length) ? r.tickers[0] : (r.ticker || r.cik);
+  selectedCompany = { cik: r.cik, ticker, name: r.name };
+  input.value = `${ticker} — ${r.name}`;
+  closeDropdown();
+}
+
+function closeDropdown() {
+  dropdown.classList.remove('open');
+}
+
+function escHtml(str) {
+  return str.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
+// ============================================================
+// Quick launch
+// ============================================================
+function quickLaunch(ticker, cik, name) {
+  selectedCompany = { cik, ticker, name };
+  input.value = `${ticker} — ${name}`;
+  triggerSearch();
+}
+
+// ============================================================
+// Main analysis trigger
+// ============================================================
+async function triggerSearch() {
+  if (!selectedCompany) {
+    // Try to resolve via search
+    const q = input.value.trim();
+    if (q.length < 1) return;
+    showLoading('Searching for ' + escHtml(q) + '…');
+    try {
+      const res = await fetch(`/api/search?q=${encodeURIComponent(q)}`);
+      const data = await res.json();
+      if (data.results && data.results.length === 1) {
+        selectedCompany = data.results[0];
+      } else if (data.results && data.results.length > 1) {
+        renderDropdown(data.results);
+        showStatus('Multiple companies found — please select one from the dropdown.');
+        return;
+      } else {
+        showStatus('No matching companies found. Try a ticker symbol like AAPL or MSFT.');
+        return;
+      }
+    } catch (e) {
+      showStatus('Search failed: ' + e.message);
+      return;
+    }
+  }
+
+  const numQ = parseInt(document.getElementById('quarters-select').value, 10);
+  await loadReport(selectedCompany, numQ);
+}
+
+// ============================================================
+// Load report
+// ============================================================
+async function loadReport(company, numQ) {
+  showLoading(`Loading ${numQ}-quarter data for <strong>${escHtml(company.name)}</strong>…`);
+  document.getElementById('search-btn').disabled = true;
+
+  try {
+    const res = await fetch(`/api/financials?cik=${encodeURIComponent(company.cik)}&n=${numQ}`);
+    const data = await res.json();
+    if (data.error) throw new Error(data.error);
+    renderReport(company, data.summary);
+  } catch (e) {
+    showStatus('Failed to load data: ' + e.message + '<br><small>Make sure the server is running at localhost:3737</small>');
+  } finally {
+    document.getElementById('search-btn').disabled = false;
+  }
+}
+
+// ============================================================
+// Render report
+// ============================================================
+function renderReport(company, quarters) {
+  if (!quarters || !quarters.length) {
+    showStatus('No quarterly data available for this company.');
+    return;
+  }
+
+  const latest = quarters[quarters.length - 1];
+  const prev4  = quarters.slice(-5, -1);
+  const latestRev = latest.revenue;
+  const latestGM  = latest.grossMarginPct;
+  const latestEPS = latest.eps;
+  const latestCF  = latest.operatingCashFlow;
+
+  // YoY for KPIs
+  const yoyRev = latest.revenueYoY;
+  const revTrend = trend(quarters, 'revenue');
+  const gmTrend  = trend(quarters, 'grossMarginPct');
+  const cfTrend  = trend(quarters, 'operatingCashFlow');
+  const epsTrend = trend(quarters, 'eps');
+
+  const periodRange = quarters.length >= 2
+    ? `${quarters[0].period} – ${latest.period}`
+    : latest.period;
+
+  // Build header HTML
+  let html = `
+    <div class="company-header">
+      <div class="company-name">${escHtml(company.name)}</div>
+      <div class="company-ticker">${escHtml(company.ticker)}</div>
+    </div>
+    <div class="report-meta">
+      ${quarters.length}-Quarter Financial Performance &nbsp;|&nbsp; ${periodRange}
+      &nbsp;|&nbsp; Source: SEC EDGAR XBRL
+    </div>
+  `;
+
+  // KPI grid
+  html += `<div class="kpi-grid">`;
+  html += kpiCard('Latest Revenue', fmt(latestRev), yoyRev);
+  html += kpiCard('Gross Margin', fmtPct(latestGM), null, `Trend: ${gmTrend}`);
+  html += kpiCard('Diluted EPS', fmtEps(latestEPS), null, `Trend: ${epsTrend}`);
+  html += kpiCard('Oper. Cash Flow', fmt(latestCF), null, `Trend: ${cfTrend}`);
+  html += `</div>`;
+
+  // Income statement table
+  html += `<div class="section-title">1 · Income Statement — ${quarters.length}-Quarter Trend</div>`;
+  html += buildIncomeTable(quarters);
+
+  // Charts
+  html += `<div class="section-title">2 · Revenue & Margin Charts</div>`;
+  html += `<div class="chart-tabs" id="chart-tabs">
+    <button class="chart-tab active" onclick="switchChart('revenue',this)">Revenue</button>
+    <button class="chart-tab" onclick="switchChart('grossMarginPct',this)">Gross Margin %</button>
+    <button class="chart-tab" onclick="switchChart('operatingMarginPct',this)">Op. Margin %</button>
+    <button class="chart-tab" onclick="switchChart('eps',this)">EPS</button>
+    <button class="chart-tab" onclick="switchChart('operatingCashFlow',this)">Op. Cash Flow</button>
+  </div>`;
+  html += buildAllCharts(quarters);
+
+  // Cash flow table
+  html += `<div class="section-title">3 · Cash Flow & Profitability</div>`;
+  html += buildCashTable(quarters);
+
+  // Commentary
+  html += `<div class="section-title">4 · Trend Analysis & Commentary</div>`;
+  html += buildCommentary(company, quarters, revTrend, gmTrend, cfTrend, epsTrend);
+
+  // Insights placeholder — filled in asynchronously after main render
+  html += `<div class="section-title" id="insights-section-title" style="display:none">5 · Company Statements & News</div>`;
+  html += `<div id="insights-panel">
+    <div class="insights-loading" id="insights-loading">
+      <span class="insights-spinner"></span>
+      Loading press releases and news articles from SEC EDGAR &amp; Yahoo Finance…
+    </div>
+  </div>`;
+
+  html += `<div class="disclaimer">
+    <strong>Data Sources:</strong> Financial data: SEC EDGAR XBRL Company Facts API (data.sec.gov).
+    Press releases: SEC EDGAR 8-K filings (EX-99.1 exhibits). News: Yahoo Finance RSS.
+    Figures may differ from press release summaries due to restatements or XBRL tagging differences.
+    This analysis is for informational purposes only — not investment advice.
+    Always verify against the company's official SEC filings.
+  </div>
+  <footer>Made with IBM Bob &nbsp;·&nbsp; EarningsIQ &nbsp;·&nbsp; Data: SEC EDGAR &amp; Yahoo Finance</footer>`;
+
+  document.getElementById('report').innerHTML = html;
+  document.getElementById('report').style.display = 'block';
+  document.getElementById('status-box').style.display = 'none';
+
+  // Show revenue chart by default
+  showChart('revenue');
+
+  // Async: load insights after the main report renders
+  loadInsights(company, quarters);
+}
+
+// ============================================================
+// Insights: async load press releases + news
+// ============================================================
+async function loadInsights(company, quarters) {
+  const insightsPanel = document.getElementById('insights-panel');
+  const sectionTitle  = document.getElementById('insights-section-title');
+  if (!insightsPanel) return;
+
+  const periods = quarters.map(q => q.period).join(',');
+  const ticker  = company.ticker || '';
+  const cik     = company.cik;
+
+  try {
+    const r = await fetch(
+      `/api/insights?cik=${encodeURIComponent(cik)}&ticker=${encodeURIComponent(ticker)}&periods=${encodeURIComponent(periods)}`
+    );
+    if (!r.ok) throw new Error('HTTP ' + r.status);
+    const data = await r.json();
+
+    if (sectionTitle) sectionTitle.style.display = '';
+    insightsPanel.innerHTML = buildInsightsHtml(quarters, data, company.ticker);
+  } catch (e) {
+    insightsPanel.innerHTML = `<div class="pr-empty">Could not load insights: ${escHtml(e.message)}. Check that the server is running.</div>`;
+  }
+}
+
+function buildInsightsHtml(quarters, data, ticker) {
+  const { pressReleases = {}, news = [] } = data;
+  const periodsWithData = quarters.map(q => q.period);
+
+  let html = '';
+
+  // ── A. Press release tabs ──
+  const hasAnyPR = periodsWithData.some(p => pressReleases[p] && (
+    pressReleases[p].quotes?.length || pressReleases[p].highlights?.length
+  ));
+
+  if (hasAnyPR) {
+    html += `<div style="margin-bottom:24px">`;
+    html += `<div style="font-size:13px;color:var(--muted);margin-bottom:10px">
+      <strong>Official Company Statements</strong> — sourced from SEC EDGAR 8-K earnings press releases (EX-99.1 exhibits).
+      Select a quarter to view executive quotes, financial highlights, and forward guidance as stated by the company.
+    </div>`;
+
+    // Tabs
+    html += `<div class="period-tabs" id="pr-tabs">`;
+    periodsWithData.forEach((period, i) => {
+      const pr = pressReleases[period];
+      const hasData = pr && (pr.quotes?.length || pr.highlights?.length);
+      const cls = hasData ? 'has-data' : 'no-data';
+      const activeCls = i === periodsWithData.length - 1 && hasData ? ' active' : '';  // default to latest
+      html += `<button class="period-tab ${cls}${activeCls}" onclick="switchPrPanel('${escHtml(period)}', this)" data-period="${escHtml(period)}">${escHtml(period)}</button>`;
+    });
+    html += `</div>`;
+
+    // Panels
+    periodsWithData.forEach((period, i) => {
+      const pr = pressReleases[period];
+      const isLatestWithData = i === periodsWithData.length - 1 && pr && (pr.quotes?.length || pr.highlights?.length);
+      const visibleCls = isLatestWithData ? ' visible' : '';
+      html += `<div class="pr-panel${visibleCls}" id="pr-panel-${escHtml(period)}">`;
+
+      if (!pr || (!pr.quotes?.length && !pr.highlights?.length && !pr.guidance?.length)) {
+        html += `<div class="pr-empty">No press release found in SEC EDGAR for this quarter. The company may not have filed an 8-K earnings release for this period, or the EX-99.1 exhibit was not available in HTML format.</div>`;
+      } else {
+        const secLink = pr.accessionNumber
+          ? `https://www.sec.gov/cgi-bin/browse-edgar?action=getcompany&CIK=${encodeURIComponent(data._cik||'')}&type=8-K&dateb=&owner=include&count=10`
+          : null;
+
+        if (pr.filingDate) {
+          html += `<div class="pr-meta">8-K filed on <strong>${escHtml(pr.filingDate)}</strong> — SEC EDGAR EX-99.1 press release</div>`;
+        }
+
+        if (pr.quotes?.length) {
+          html += `<div class="pr-block"><div class="pr-block-title">Executive Statements</div>`;
+          for (const q of pr.quotes) {
+            html += `<div class="pr-quote">${escHtml(q)}</div>`;
+          }
+          html += `</div>`;
+        }
+
+        if (pr.highlights?.length) {
+          html += `<div class="pr-block"><div class="pr-block-title">Financial Highlights from Press Release</div>`;
+          for (const h of pr.highlights) {
+            html += `<div class="pr-highlight">${escHtml(h)}</div>`;
+          }
+          html += `</div>`;
+        }
+
+        if (pr.guidance?.length) {
+          html += `<div class="pr-block"><div class="pr-block-title">Forward Guidance &amp; Outlook</div>`;
+          for (const g of pr.guidance) {
+            html += `<div class="pr-guidance">${escHtml(g)}</div>`;
+          }
+          html += `</div>`;
+        }
+      }
+
+      html += `</div>`; // .pr-panel
+    });
+
+    html += `</div>`; // press release block
+  } else {
+    html += `<div class="pr-empty" style="margin-bottom:16px">No earnings press releases found in SEC EDGAR 8-K filings for the selected quarters. This may happen for financial companies or firms with non-standard reporting formats.</div>`;
+  }
+
+  // ── B. News feed ──
+  if (news.length > 0) {
+    html += `<div style="margin-bottom:16px">`;
+    html += `<div style="font-size:13px;color:var(--muted);margin-bottom:10px">
+      <strong>Recent News &amp; Analysis</strong> — sourced from Yahoo Finance (${escHtml(ticker)} headlines).
+    </div>`;
+    html += `<div class="news-grid">`;
+    for (const item of news.slice(0, 10)) {
+      const dateStr = item.pubDate ? new Date(item.pubDate).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) : '';
+      html += `<div class="news-card">
+        <div class="news-card-title">
+          ${item.link
+            ? `<a href="${escHtml(item.link)}" target="_blank" rel="noopener">${escHtml(item.title)}</a>`
+            : escHtml(item.title)
+          }
+        </div>
+        ${item.description ? `<div class="news-card-desc">${escHtml(item.description.slice(0, 140))}${item.description.length > 140 ? '…' : ''}</div>` : ''}
+        ${dateStr ? `<div class="news-card-date">${dateStr}</div>` : ''}
+      </div>`;
+    }
+    html += `</div></div>`;
+  } else {
+    html += `<div class="pr-empty">No recent news articles found for this ticker.</div>`;
+  }
+
+  return html;
+}
+
+function switchPrPanel(period, btn) {
+  // Hide all panels
+  document.querySelectorAll('.pr-panel').forEach(el => el.classList.remove('visible'));
+  document.querySelectorAll('.period-tab').forEach(b => b.classList.remove('active'));
+  // Show selected
+  const panel = document.getElementById('pr-panel-' + period);
+  if (panel) panel.classList.add('visible');
+  btn.classList.add('active');
+}
+
+function kpiCard(label, val, yoy, sub) {
+  let change = '';
+  if (yoy) change = `<div class="kpi-change ${pctClass(yoy)}">${escHtml(yoy)} YoY</div>`;
+  else if (sub) change = `<div class="kpi-change" style="color:var(--muted);font-weight:400">${escHtml(sub)}</div>`;
+  return `<div class="kpi">
+    <div class="kpi-val">${val}</div>
+    <div class="kpi-label">${label}</div>
+    ${change}
+  </div>`;
+}
+
+// ============================================================
+// Tables
+// ============================================================
+function buildIncomeTable(quarters) {
+  const cols = quarters.map(q => `<th>${escHtml(q.period)}</th>`).join('');
+
+  function row(label, field, formatter, highlight, subRow) {
+    const cells = quarters.map(q => {
+      const v = q[field];
+      return `<td>${formatter(v)}</td>`;
+    }).join('');
+    const tr = highlight ? 'class="hl"' : '';
+    const indent = subRow ? ' style="padding-left:18px;font-weight:400"' : '';
+    return `<tr ${tr}><td class="label"${indent}>${escHtml(label)}</td>${cells}</tr>`;
+  }
+
+  function rowYoY(label) {
+    const cells = quarters.map(q => {
+      const v = q.revenueYoY;
+      return `<td class="${v ? pctClass(v) : ''}">${v ? escHtml(v) : '—'}</td>`;
+    }).join('');
+    return `<tr><td class="label" style="padding-left:18px;font-weight:400">${escHtml(label)}</td>${cells}</tr>`;
+  }
+
+  return `<div class="tbl-wrap"><table>
+    <thead><tr><th class="left">Metric</th>${cols}</tr></thead>
+    <tbody>
+      ${row('Revenue', 'revenue', fmt, true)}
+      ${rowYoY('  YoY Growth')}
+      ${row('Gross Profit', 'grossProfit', fmt, false)}
+      ${row('Gross Margin %', 'grossMarginPct', fmtPct, true)}
+      ${row('Operating Income', 'operatingIncome', fmt, false)}
+      ${row('Op. Margin %', 'operatingMarginPct', fmtPct, false)}
+      ${row('Net Income', 'netIncome', fmt, false)}
+      ${row('Diluted EPS', 'eps', fmtEps, true)}
+    </tbody>
+  </table></div>`;
+}
+
+function buildCashTable(quarters) {
+  const cols = quarters.map(q => `<th>${escHtml(q.period)}</th>`).join('');
+  function row(label, field, formatter, highlight) {
+    const cells = quarters.map(q => {
+      const v = q[field];
+      return `<td>${formatter(v)}</td>`;
+    }).join('');
+    const tr = highlight ? 'class="hl"' : '';
+    return `<tr ${tr}><td class="label">${escHtml(label)}</td>${cells}</tr>`;
+  }
+  return `<div class="tbl-wrap"><table>
+    <thead><tr><th class="left">Metric</th>${cols}</tr></thead>
+    <tbody>
+      ${row('Operating Cash Flow', 'operatingCashFlow', fmt, true)}
+      ${row('Net Income', 'netIncome', fmt, false)}
+      ${row('Gross Profit', 'grossProfit', fmt, false)}
+    </tbody>
+  </table></div>`;
+}
+
+// ============================================================
+// SVG Charts
+// ============================================================
+const CHART_CONFIGS = {
+  revenue:           { label: 'Revenue',          formatter: fmt,    color: '#3b82d4', bar: true },
+  grossMarginPct:    { label: 'Gross Margin %',    formatter: fmtPct, color: '#7c5cd8', bar: false },
+  operatingMarginPct:{ label: 'Operating Margin %',formatter: fmtPct, color: '#2e7d32', bar: false },
+  eps:               { label: 'Diluted EPS',        formatter: fmtEps, color: '#c62828', bar: false },
+  operatingCashFlow: { label: 'Operating Cash Flow',formatter: fmt,   color: '#856404', bar: true },
+};
+
+function buildAllCharts(quarters) {
+  let html = '';
+  for (const [field, cfg] of Object.entries(CHART_CONFIGS)) {
+    const display = field === 'revenue' ? 'block' : 'none';
+    html += `<div id="chart-${field}" class="chart-wrap" style="display:${display}">`;
+    html += buildSvgChart(quarters, field, cfg);
+    html += '</div>';
+  }
+  return html;
+}
+
+function buildSvgChart(quarters, field, cfg) {
+  const vals = quarters.map(q => q[field]);
+  const nonNull = vals.filter(v => v !== null && v !== undefined);
+  if (!nonNull.length) return '<div style="color:var(--muted);font-size:12px;padding:12px 0">No data available for this metric.</div>';
+
+  const minVal = Math.min(...nonNull);
+  const maxVal = Math.max(...nonNull);
+  const range  = maxVal - minVal || 1;
+
+  const W = 760, H = 160, PAD_L = 10, PAD_R = 10, PAD_T = 28, PAD_B = 30;
+  const chartW = W - PAD_L - PAD_R;
+  const chartH = H - PAD_T - PAD_B;
+  const n = quarters.length;
+  const step = chartW / n;
+
+  // Y scale: give some headroom
+  const yMin = minVal - range * 0.08;
+  const yMax = maxVal + range * 0.08;
+  const yRange = yMax - yMin;
+
+  function yCoord(v) {
+    if (v === null || v === undefined) return null;
+    return PAD_T + chartH - ((v - yMin) / yRange) * chartH;
+  }
+
+  let svgBody = '';
+
+  // Grid lines (3)
+  for (let i = 0; i <= 3; i++) {
+    const y = PAD_T + (chartH / 3) * i;
+    svgBody += `<line x1="${PAD_L}" y1="${y}" x2="${W - PAD_R}" y2="${y}" stroke="#e5e7eb" stroke-width="1"/>`;
+  }
+
+  if (cfg.bar) {
+    // Bar chart
+    const barW = step * 0.55;
+    for (let i = 0; i < n; i++) {
+      const v = vals[i];
+      const x = PAD_L + i * step + step * 0.5 - barW / 2;
+      const y = yCoord(v);
+      if (y === null) continue;
+      const barH = PAD_T + chartH - y;
+      const opacity = 0.55 + (i / n) * 0.45;
+      svgBody += `<rect x="${x.toFixed(1)}" y="${y.toFixed(1)}" width="${barW.toFixed(1)}" height="${barH.toFixed(1)}" fill="${cfg.color}" opacity="${opacity.toFixed(2)}"/>`;
+      // Label above bar
+      const labelY = y - 4;
+      svgBody += `<text x="${(x + barW/2).toFixed(1)}" y="${labelY.toFixed(1)}" text-anchor="middle" font-size="9" fill="#57606a">${cfg.formatter(v)}</text>`;
+    }
+  } else {
+    // Line chart
+    const points = [];
+    for (let i = 0; i < n; i++) {
+      const v = vals[i];
+      const x = PAD_L + i * step + step * 0.5;
+      const y = yCoord(v);
+      if (y !== null) points.push({ x, y, v, i });
+    }
+    if (points.length >= 2) {
+      const poly = points.map(p => `${p.x.toFixed(1)},${p.y.toFixed(1)}`).join(' ');
+      svgBody += `<polyline points="${poly}" fill="none" stroke="${cfg.color}" stroke-width="2.5"/>`;
+    }
+    for (const p of points) {
+      svgBody += `<circle cx="${p.x.toFixed(1)}" cy="${p.y.toFixed(1)}" r="4" fill="${cfg.color}"/>`;
+      svgBody += `<text x="${p.x.toFixed(1)}" y="${(p.y - 8).toFixed(1)}" text-anchor="middle" font-size="9" fill="#1f2328">${cfg.formatter(p.v)}</text>`;
+    }
+  }
+
+  // X-axis labels
+  for (let i = 0; i < n; i++) {
+    const x = PAD_L + i * step + step * 0.5;
+    const y = H - 4;
+    svgBody += `<text x="${x.toFixed(1)}" y="${y}" text-anchor="middle" font-size="9" fill="#57606a">${escHtml(quarters[i].period)}</text>`;
+  }
+
+  return `<div class="chart-title">${cfg.label}</div>
+<svg class="chart" viewBox="0 0 ${W} ${H}" aria-label="${cfg.label} chart">
+  ${svgBody}
+</svg>`;
+}
+
+function switchChart(field, btn) {
+  for (const [f] of Object.entries(CHART_CONFIGS)) {
+    const el = document.getElementById('chart-' + f);
+    if (el) el.style.display = 'none';
+  }
+  document.querySelectorAll('.chart-tab').forEach(b => b.classList.remove('active'));
+  showChart(field);
+  btn.classList.add('active');
+}
+
+function showChart(field) {
+  const el = document.getElementById('chart-' + field);
+  if (el) el.style.display = 'block';
+}
+
+// ============================================================
+// Commentary
+// ============================================================
+function buildCommentary(company, quarters, revTrend, gmTrend, cfTrend, epsTrend) {
+  const latest = quarters[quarters.length - 1];
+  const latestRev = latest.revenue;
+  const latestGM  = latest.grossMarginPct;
+  const yoyRev = latest.revenueYoY;
+  const name = escHtml(company.name);
+
+  // Revenue
+  const revTag = revTrend === 'growing' ? '<span class="tag tag-up">↑ GROWING</span>'
+               : revTrend === 'declining' ? '<span class="tag tag-dn">↓ DECLINING</span>'
+               : '<span class="tag tag-neu">→ STABLE</span>';
+
+  // Gross margin
+  const gmTag = gmTrend === 'growing' ? '<span class="tag tag-up">↑ EXPANDING</span>'
+              : gmTrend === 'declining' ? '<span class="tag tag-dn">↓ COMPRESSING</span>'
+              : '<span class="tag tag-neu">→ STABLE</span>';
+
+  // Avg margins
+  const gm4 = quarters.slice(-4).map(q => q.grossMarginPct).filter(v => v !== null);
+  const gm4prior = quarters.slice(0, Math.min(4, quarters.length)).map(q => q.grossMarginPct).filter(v => v !== null);
+  const avgGm4 = gm4.length ? (gm4.reduce((a,b)=>a+b,0)/gm4.length).toFixed(1) : null;
+  const avgGm4Prior = gm4prior.length ? (gm4prior.reduce((a,b)=>a+b,0)/gm4prior.length).toFixed(1) : null;
+
+  const cfTag = cfTrend === 'growing' ? '<span class="tag tag-up">↑ GROWING</span>'
+              : cfTrend === 'declining' ? '<span class="tag tag-dn">↓ DECLINING</span>'
+              : '<span class="tag tag-neu">→ STABLE</span>';
+
+  const epsTag = epsTrend === 'growing' ? '<span class="tag tag-up">↑ GROWING</span>'
+               : epsTrend === 'declining' ? '<span class="tag tag-dn">↓ DECLINING</span>'
+               : '<span class="tag tag-neu">→ STABLE</span>';
+
+  let html = '';
+
+  // Revenue
+  html += `<div class="commentary-section">
+    <div class="commentary-heading">Revenue Growth</div>
+    <div class="commentary-box">
+      ${revTag}
+      ${name} reported <strong>${fmt(latestRev)}</strong> in its most recent quarter
+      ${yoyRev ? `— <strong>${escHtml(yoyRev)} year-over-year growth</strong>` : ''}.
+      Revenue has been <strong>${revTrend}</strong> across the ${quarters.length}-quarter window.
+      ${revTrend === 'growing' ? 'Consistent top-line expansion signals healthy demand and successful go-to-market execution.' :
+        revTrend === 'declining' ? 'Revenue headwinds may reflect macro pressures, market saturation, or competitive dynamics — watch guidance closely.' :
+        'Flat revenue indicates a mature, steady business; growth catalysts will be key to re-rating.'}
+    </div>
+  </div>`;
+
+  // Gross margin
+  html += `<div class="commentary-section">
+    <div class="commentary-heading">Gross Margin Analysis</div>
+    <div class="commentary-box">
+      ${gmTag}
+      Gross margin stands at <strong>${fmtPct(latestGM)}</strong> in the latest quarter.
+      ${avgGm4 && avgGm4Prior ? `Average gross margin over the most recent 4 quarters: <strong>${avgGm4}%</strong> vs. <strong>${avgGm4Prior}%</strong> in the prior period.` : ''}
+      ${gmTrend === 'growing' ? 'Expanding margins indicate improving pricing power, favorable product mix shift toward higher-margin offerings, or operating leverage kicking in.' :
+        gmTrend === 'declining' ? 'Margin compression may reflect rising input costs, pricing pressure, mix shift toward lower-margin products, or higher cost of revenue.' :
+        'Stable margins suggest consistent business model execution without material mix shifts — a positive signal for earnings quality.'}
+    </div>
+  </div>`;
+
+  // EPS
+  html += `<div class="commentary-section">
+    <div class="commentary-heading">Earnings Per Share (EPS)</div>
+    <div class="commentary-box">
+      ${epsTag}
+      Diluted EPS is <strong>${fmtEps(latest.eps)}</strong> in the latest quarter.
+      ${epsTrend === 'growing' ? 'EPS growth driven by a combination of revenue expansion, margin improvement, and/or share buybacks reflects strong earnings quality.' :
+        epsTrend === 'declining' ? 'Declining EPS may signal earnings pressure from higher costs, investment cycles, or share issuance dilution — context from management guidance is essential.' :
+        'Stable EPS reflects consistent profitability — analysts will focus on the path to re-acceleration.'}
+    </div>
+  </div>`;
+
+  // Cash flow
+  html += `<div class="commentary-section">
+    <div class="commentary-heading">Cash Flow Generation</div>
+    <div class="commentary-box">
+      ${cfTag}
+      Operating cash flow was <strong>${fmt(latest.operatingCashFlow)}</strong> in the latest quarter.
+      ${cfTrend === 'growing' ? 'Growing operating cash flow is the gold standard of financial health — it gives management flexibility to invest in growth, return capital to shareholders, and service debt without external financing.' :
+        cfTrend === 'declining' ? 'Declining cash generation warrants scrutiny: is working capital deteriorating, or is this an investment cycle that will normalize? Monitor FCF conversion relative to reported net income.' :
+        'Stable cash flows support a durable business model. Analysts will look for catalysts to accelerate cash generation.'}
+    </div>
+  </div>`;
+
+  // Analyst themes
+  html += `<div class="commentary-section">
+    <div class="commentary-heading">Key Analyst Watch Points</div>
+    <div class="commentary-box">
+      <span class="tag tag-neu">SYNTHESIZED</span>
+      Based on the ${quarters.length}-quarter trend, the following themes would drive analyst discussion:
+      <ul>
+        <li><strong>Revenue quality:</strong> ${revTrend === 'growing' ? 'Positive YoY momentum supports constructive analyst views and premium multiples.' : revTrend === 'declining' ? 'Revenue headwinds likely weigh on consensus estimates — watch next-quarter guidance.' : 'Stable revenue — analysts will seek evidence of reacceleration or new growth vectors.'}</li>
+        <li><strong>Margin story:</strong> ${gmTrend === 'growing' ? 'Expanding margins support earnings upgrade cycle — a key bull thesis.' : gmTrend === 'declining' ? 'Margin compression is typically a headwind to multiple expansion — monitor cost reduction initiatives.' : 'Stable margins signal execution consistency — typically rewarded with stable multiples.'}</li>
+        <li><strong>Cash flow durability:</strong> ${cfTrend === 'growing' ? 'Growing cash flow strengthens the investment thesis and supports capital returns.' : 'Watch FCF conversion — cash flow quality is the ultimate arbiter of earnings reliability.'}</li>
+        <li><strong>Company statements:</strong> Executive quotes, financial highlights, and forward guidance from official SEC 8-K press releases appear in section 5 below (loaded automatically). Segment data and non-GAAP adjustments are not available in XBRL-tagged data.</li>
+      </ul>
+    </div>
+  </div>`;
+
+  return html;
+}
+
+// ============================================================
+// UI helpers
+// ============================================================
+function showLoading(msg) {
+  document.getElementById('report').style.display = 'none';
+  document.getElementById('status-box').style.display = 'block';
+  document.getElementById('status-box').innerHTML = `
+    <div class="spinner"></div>
+    <div style="color:var(--muted);font-size:13px">${msg}</div>`;
+}
+
+function showStatus(msg) {
+  document.getElementById('report').style.display = 'none';
+  document.getElementById('status-box').style.display = 'block';
+  document.getElementById('status-box').innerHTML = `
+    <div style="font-size:28px;margin-bottom:10px">⚠️</div>
+    <div style="font-size:13px;color:var(--muted)">${msg}</div>`;
+}
+</script>
+</body>
+</html>
