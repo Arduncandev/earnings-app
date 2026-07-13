@@ -929,6 +929,75 @@ const server = http.createServer(async (req, res) => {
     return;
   }
 
+  // ── API: dashboard — batch quotes + latest financials ────────
+  if (pathname === '/api/dashboard') {
+    // Expects JSON body: { stocks: [{ cik, ticker, name }, ...] }
+    if (req.method !== 'POST') { send(res, 405, { error: 'POST only' }); return; }
+    let body = '';
+    req.on('data', chunk => { body += chunk; });
+    req.on('end', async () => {
+      try {
+        const { stocks = [] } = JSON.parse(body || '{}');
+        if (!Array.isArray(stocks) || stocks.length === 0) {
+          send(res, 200, { items: [] }); return;
+        }
+
+        const results = await Promise.allSettled(
+          stocks.map(async s => {
+            const ticker = (s.ticker || '').toUpperCase();
+            const cik    = (s.cik    || '').replace(/^0+/, '');
+
+            const [quote, facts] = await Promise.allSettled([
+              ticker ? fetchCurrentQuote(ticker) : Promise.resolve(null),
+              cik    ? fetchCompanyFacts(cik)     : Promise.resolve(null),
+            ]);
+
+            const q = quote.status === 'fulfilled' ? quote.value : null;
+
+            let latestQuarter = null;
+            let revenueSparkline = [];
+            let epsSparkline = [];
+            if (facts.status === 'fulfilled' && facts.value) {
+              const summary = buildQuarterlySummary(facts.value, 6);
+              if (summary.length) {
+                latestQuarter = summary[summary.length - 1];
+                revenueSparkline = summary.map(qq => qq.revenue);
+                epsSparkline     = summary.map(qq => qq.eps);
+              }
+            }
+
+            return {
+              ticker, cik,
+              name:    s.name || ticker,
+              price:   q ? q.price : null,
+              change:  q ? q.change : null,
+              changePct: q ? q.changePct : null,
+              marketState: q ? q.marketState : null,
+              latestRevenue: latestQuarter ? latestQuarter.revenue : null,
+              latestEPS:     latestQuarter ? latestQuarter.eps : null,
+              latestPeriod:  latestQuarter ? latestQuarter.period : null,
+              revenueYoY:    latestQuarter ? latestQuarter.revenueYoY : null,
+              grossMarginPct: latestQuarter ? latestQuarter.grossMarginPct : null,
+              revenueSparkline,
+              epsSparkline,
+            };
+          })
+        );
+
+        const items = results.map((r, i) => {
+          if (r.status === 'fulfilled') return r.value;
+          return { ...stocks[i], error: r.reason?.message || 'Failed to load' };
+        });
+
+        send(res, 200, { items });
+      } catch (e) {
+        console.error('Dashboard error:', e.message);
+        send(res, 500, { error: e.message });
+      }
+    });
+    return;
+  }
+
   // ── Static files ─────────────────────────────────────────────
   let filePath = pathname === '/' ? '/index.html' : pathname;
   filePath = path.join(PUBLIC_DIR, filePath);
